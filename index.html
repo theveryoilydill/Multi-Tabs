@@ -231,7 +231,8 @@ var isFullscreen = false;
 var settings = {
   autosave: true,
   openInBlankOnStart: true,
-  cookieFileHandle: null
+  cookieFileHandle: null,
+  useWebfuseProxy: true  // CHANGED: Enabled by default
 };
 
 // ── BOOT ───────────────────────────────────────────────────────────────────
@@ -321,10 +322,23 @@ function loadSettings() {
     var s = JSON.parse(localStorage.getItem('multi-frames_settings') || '{}');
     if (typeof s.autosave === 'boolean') settings.autosave = s.autosave;
     if (typeof s.openInBlankOnStart === 'boolean') settings.openInBlankOnStart = s.openInBlankOnStart;
+    if (typeof s.useWebfuseProxy === 'boolean') settings.useWebfuseProxy = s.useWebfuseProxy;
   } catch(e) {}
 }
 function saveSettings() {
-  try { localStorage.setItem('multi-frames_settings', JSON.stringify({ autosave: settings.autosave, openInBlankOnStart: settings.openInBlankOnStart })); } catch(e) {}
+  try { localStorage.setItem('multi-frames_settings', JSON.stringify({ 
+    autosave: settings.autosave, 
+    openInBlankOnStart: settings.openInBlankOnStart,
+    useWebfuseProxy: settings.useWebfuseProxy
+  })); } catch(e) {}
+}
+
+// ── WEBFUSE PROXY HELPER ───────────────────────────────────────────────────
+function buildIframeSrc(url) {
+  if (!settings.useWebfuseProxy || !url) return url;
+  var normalized = url.startsWith('http') ? url : 'https://' + url;
+  var encoded = encodeURIComponent(normalized);
+  return 'https://demo.webfuse.com/+iframetest/?url=' + encoded;
 }
 
 // ── AUTOSAVE ───────────────────────────────────────────────────────────────
@@ -376,7 +390,7 @@ async function saveAllCookies() {
       var h = await window.showSaveFilePicker({ suggestedName: 'cookies.json', types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
       var w2 = await h.createWritable(); await w2.write(json); await w2.close();
       settings.cookieFileHandle = h; updateFileDisplay();
-      toast('Saved \u2014 file now linked for autosave');
+      toast('Saved — file now linked for autosave');
     } else {
       var blob = new Blob([json], { type: 'application/json' });
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cookies.json'; a.click();
@@ -389,7 +403,7 @@ function flashAutosave() {
   var el = document.getElementById('autosave-indicator');
   if (!el) return;
   el.classList.remove('flash');
-  void el.offsetWidth; // reflow to restart animation
+  void el.offsetWidth;
   el.classList.add('flash');
   setTimeout(function() { el.classList.remove('flash'); }, 2200);
 }
@@ -447,7 +461,7 @@ function renderFrameWrap(tab) {
   tb.className = 'frame-toolbar';
 
   var inp = document.createElement('input');
-  inp.type = 'text'; inp.value = tab.src || ''; inp.placeholder = 'Enter URL and press Enter\u2026';
+  inp.type = 'text'; inp.value = tab.src || ''; inp.placeholder = 'Enter URL and press Enter…';
   inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') navigateFrame(tab.id, inp.value); });
 
   var goBtn   = mkBtn('icon-btn', '➤', 'Go', function() { navigateFrame(tab.id, inp.value); });
@@ -463,10 +477,12 @@ function renderFrameWrap(tab) {
   content.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;';
 
   if (tab.src && tab.running) {
-    var fr = document.createElement('iframe'); fr.src = tab.src; fr.allow = 'fullscreen';
+    var fr = document.createElement('iframe'); 
+    fr.src = buildIframeSrc(tab.src);
+    fr.allow = 'fullscreen';
     content.appendChild(fr);
   } else {
-    content.appendChild(makePH(tab.src ? 'Stopped \u2014 press \u25ba to start' : 'Enter a URL above and press Enter'));
+    content.appendChild(makePH(tab.src ? 'Stopped — press ► to start' : 'Enter a URL above and press Enter'));
   }
 
   wrap.appendChild(tb); wrap.appendChild(content);
@@ -502,7 +518,9 @@ function navigateFrame(id, rawUrl) {
   if (wrap) {
     wrap.querySelector('input').value = url; updateSS(wrap, true);
     var c = wrap.querySelector('[data-role="content"]'); c.innerHTML = '';
-    var fr = document.createElement('iframe'); fr.src = url; fr.allow = 'fullscreen'; c.appendChild(fr);
+    var fr = document.createElement('iframe'); 
+    fr.src = buildIframeSrc(url);
+    fr.allow = 'fullscreen'; c.appendChild(fr);
   }
 }
 
@@ -511,13 +529,15 @@ function toggleFrame(id) {
   var wrap = document.querySelector('.frame-wrap[data-id="' + id + '"]');
   var c = wrap.querySelector('[data-role="content"]');
   if (tab.running) {
-    tab.running = false; c.innerHTML = ''; c.appendChild(makePH('Stopped \u2014 press \u25ba to start'));
+    tab.running = false; c.innerHTML = ''; c.appendChild(makePH('Stopped — press ► to start'));
     document.querySelector('.tab[data-id="' + id + '"]').className = 'tab stopped' + (activeId === id ? ' active' : '');
     updateSS(wrap, false); toast('Tab stopped');
   } else {
     if (!tab.src) { toast('Set a URL first'); return; }
     tab.running = true; c.innerHTML = '';
-    var fr = document.createElement('iframe'); fr.src = tab.src; fr.allow = 'fullscreen'; c.appendChild(fr);
+    var fr = document.createElement('iframe'); 
+    fr.src = buildIframeSrc(tab.src);
+    fr.allow = 'fullscreen'; c.appendChild(fr);
     document.querySelector('.tab[data-id="' + id + '"]').className = 'tab running' + (activeId === id ? ' active' : '');
     updateSS(wrap, true); toast('Tab started');
   }
@@ -533,7 +553,9 @@ function reloadFrame(id) {
   var tab = tabs.find(function(t) { return t.id === id; }); if (!tab || !tab.running || !tab.src) return;
   var wrap = document.querySelector('.frame-wrap[data-id="' + id + '"]');
   var c = wrap.querySelector('[data-role="content"]'); c.innerHTML = '';
-  var fr = document.createElement('iframe'); fr.src = tab.src; fr.allow = 'fullscreen'; c.appendChild(fr);
+  var fr = document.createElement('iframe'); 
+  fr.src = buildIframeSrc(tab.src);
+  fr.allow = 'fullscreen'; c.appendChild(fr);
   toast('Reloaded');
 }
 
@@ -571,6 +593,17 @@ function buildSettingsPanel() {
   p.innerHTML = [
     '<h2>Settings</h2>',
     '<p class="subtitle">Preferences save automatically to <code>localStorage</code>. The cookie file link resets on page reload (browser security).</p>',
+
+    '<div class="s-section">',
+      '<h3>iframe Loading</h3>',
+      '<div class="s-row">',
+        '<div class="s-info">',
+          '<label for="tog-webfuse">Use Webfuse iframe proxy</label>',
+          '<small>Load pages through <code>demo.webfuse.com</code> proxy. May help with sites that block iframes. Target URLs are automatically wrapped.</small>',
+        '</div>',
+        '<label class="toggle"><input type="checkbox" id="tog-webfuse"><span class="toggle-track"></span></label>',
+      '</div>',
+    '</div>',
 
     '<div class="s-section">',
       '<h3>Cookies</h3>',
@@ -618,6 +651,13 @@ function buildSettingsPanel() {
       '</div>',
     '</div>',
   ].join('');
+
+  var togWebfuse = document.getElementById('tog-webfuse');
+  togWebfuse.checked = settings.useWebfuseProxy;
+  togWebfuse.addEventListener('change', function() {
+    settings.useWebfuseProxy = this.checked; saveSettings();
+    toast(settings.useWebfuseProxy ? 'Webfuse proxy enabled' : 'Webfuse proxy disabled');
+  });
 
   var togAuto = document.getElementById('tog-autosave');
   togAuto.checked = settings.autosave;
@@ -704,7 +744,7 @@ async function saveCookies() {
       var h = await window.showSaveFilePicker({ suggestedName: 'cookies.json', types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
       var w2 = await h.createWritable(); await w2.write(json); await w2.close();
       settings.cookieFileHandle = h; updateFileDisplay();
-      toast('Saved \u2014 file now linked for autosave');
+      toast('Saved — file now linked for autosave');
     } else {
       var blob = new Blob([json], { type: 'application/json' });
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cookies.json'; a.click();
@@ -757,4 +797,3 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 </script>
 </body>
 </html>
-
