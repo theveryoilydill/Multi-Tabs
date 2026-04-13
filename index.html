@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TabForge · inline startup</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f0f10;
+    --surface: #1a1a1d;
+    --surface2: #242428;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --accent: #7c6af7;
+    --accent2: #a89cf7;
+    --text: #e8e8ec;
+    --muted: #888896;
+    --danger: #e24b4a;
+    --success: #3da874;
+    --tab-h: 42px;
+    --bar-h: 52px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  #topbar {
+    height: var(--bar-h); background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; padding: 0 12px; flex-shrink: 0;
+  }
+  #topbar .logo { font-size: 13px; font-weight: 600; color: var(--accent2); letter-spacing: 0.04em; margin-right: 4px; white-space: nowrap; }
+  .bar-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    white-space: nowrap; transition: background 0.15s, border-color 0.15s; line-height: 1.4;
+  }
+  .bar-btn:hover { background: #2e2e35; }
+  .bar-btn.accent { border-color: rgba(124,106,247,0.5); color: var(--accent2); }
+  .bar-btn.ok { border-color: rgba(61,168,116,0.45); color: var(--success); }
+  #url-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    font-size: 12px; padding: 5px 10px; border-radius: 6px; outline: none; min-width: 0;
+  }
+  #url-input:focus { border-color: var(--accent); }
+  #url-input::placeholder { color: var(--muted); }
+  #autosave-indicator { font-size: 10px; color: var(--success); opacity: 0; transition: opacity 0.5s; white-space: nowrap; pointer-events: none; }
+  #autosave-indicator.flash { opacity: 1; }
+
+  #tabbar {
+    height: var(--tab-h); background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: stretch; overflow-x: auto; flex-shrink: 0; gap: 2px; padding: 4px 4px 0;
+  }
+  #tabbar::-webkit-scrollbar { height: 3px; }
+  #tabbar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .tab {
+    display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px;
+    background: var(--surface2); border: 1px solid transparent; border-bottom: none;
+    border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px; color: var(--muted);
+    min-width: 120px; max-width: 200px; white-space: nowrap; overflow: hidden;
+    transition: background 0.12s, color 0.12s; flex-shrink: 0;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--bg); border-color: var(--border); color: var(--text); }
+  .tab .tab-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .tab .tab-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .tab.running .tab-dot { background: var(--success); }
+  .tab.stopped .tab-dot { background: var(--muted); }
+  .tab-dot.sdot { background: var(--accent) !important; }
+  .tab .tab-close { font-size: 14px; line-height: 1; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 3px; flex-shrink: 0; }
+  .tab .tab-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  #add-tab {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 100%; font-size: 18px; color: var(--muted);
+    cursor: pointer; border-radius: 6px 6px 0 0; flex-shrink: 0;
+  }
+  #add-tab:hover { background: var(--surface2); color: var(--text); }
+
+  #frames { flex: 1; position: relative; overflow: hidden; }
+  .frame-wrap { position: absolute; inset: 0; display: none; flex-direction: column; z-index: 1; }
+  .frame-wrap.active { display: flex; }
+  .frame-toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .frame-toolbar input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-size: 12px; padding: 4px 10px; border-radius: 5px; outline: none;
+  }
+  .frame-toolbar input:focus { border-color: var(--accent); }
+  .icon-btn { background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 4px 6px; border-radius: 5px; line-height: 1; transition: background 0.12s, color 0.12s; }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); }
+  .icon-btn.active-btn { color: var(--success); }
+  .icon-btn.stop-btn { color: var(--danger); }
+  .icon-btn.fs-btn { color: var(--accent2); font-size: 14px; }
+  iframe { flex: 1; border: none; background: white; }
+  .placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 8px; font-size: 13px; }
+  .placeholder .big { font-size: 36px; }
+
+  #settings-panel { position: absolute; inset: 0; overflow-y: auto; padding: 28px 32px; background: var(--bg); display: none; z-index: 2; }
+  #settings-panel.active { display: block; }
+  #settings-panel h2 { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  #settings-panel .subtitle { font-size: 12px; color: var(--muted); margin-bottom: 28px; line-height: 1.5; }
+  .s-section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  .s-section h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 16px; }
+  .s-row { display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .s-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .s-row:first-of-type { padding-top: 0; }
+  .s-info { flex: 1; }
+  .s-info label { display: block; font-size: 13px; color: var(--text); margin-bottom: 3px; cursor: pointer; }
+  .s-info small { font-size: 11px; color: var(--muted); line-height: 1.5; display: block; }
+  .s-info code { font-family: monospace; font-size: 11px; background: var(--surface2); padding: 1px 4px; border-radius: 3px; color: var(--accent2); }
+  .s-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; margin-top: 1px; }
+  .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .toggle-track { position: absolute; inset: 0; background: var(--surface2); border: 1px solid var(--border2); border-radius: 20px; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+  .toggle input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+  .toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform 0.2s, background 0.2s; }
+  .toggle input:checked + .toggle-track::after { transform: translateX(16px); background: #fff; }
+  .file-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; width: 100%; }
+  .file-display { flex: 1; font-size: 11px; font-family: monospace; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; padding: 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-display.linked { color: var(--success); }
+  .sm-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: 11px; padding: 5px 11px; border-radius: 5px; cursor: pointer; white-space: nowrap; transition: background 0.15s; }
+  .sm-btn:hover { background: #2e2e35; }
+  .sm-btn.ok { border-color: rgba(61,168,116,0.45); color: var(--success); }
+  .sm-btn.del { border-color: rgba(226,75,74,0.4); color: var(--danger); }
+  .sm-btn.hi { border-color: rgba(124,106,247,0.5); color: var(--accent2); }
+
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%) translateY(60px); background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 8px 16px; border-radius: 8px; transition: transform 0.25s ease; pointer-events: none; z-index: 9999; white-space: nowrap; }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ── INLINE STARTUP PANEL (LAYERED ON TOP) ── */
+  #startup-inline-panel {
+    position: absolute; inset: 0; overflow-y: auto; padding: 32px 40px;
+    background: var(--bg); display: flex; align-items: center; justify-content: center;
+    z-index: 100 !important;           /* ensure it covers everything */
+    pointer-events: auto;
+  }
+  #startup-inline-panel .panel-card {
+    max-width: 520px; width: 100%; background: var(--surface);
+    border: 1px solid var(--border2); border-radius: 18px; padding: 32px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+    pointer-events: auto;
+  }
+  #startup-inline-panel h3 {
+    font-size: 20px; font-weight: 600; color: var(--text); margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #startup-inline-panel p {
+    font-size: 13px; color: var(--muted); margin-bottom: 24px; line-height: 1.6;
+  }
+  .inline-btn-row {
+    display: flex; gap: 14px; justify-content: stretch;
+  }
+  .inline-big-btn {
+    flex: 1; padding: 14px 16px; border-radius: 12px; font-size: 13px; cursor: pointer;
+    border: 1px solid var(--border2); background: var(--surface2); color: var(--text);
+    transition: background 0.15s, border-color 0.15s; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    pointer-events: auto; position: relative; z-index: 101;
+  }
+  .inline-big-btn:hover { background: #2e2e35; }
+  .inline-big-btn.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .inline-big-btn.primary:hover { background: #6a5ae0; border-color: #6a5ae0; }
+  .inline-big-btn .btn-icon { font-size: 26px; margin-bottom: 2px; }
+  .inline-big-btn .btn-label { font-weight: 500; font-size: 14px; }
+  .inline-big-btn .btn-sub { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+
+  /* paste modal (unchanged) */
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 300; align-items: center; justify-content: center; }
+  .overlay.show { display: flex; }
+  .overlay-box { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 28px; max-width: 90vw; }
+  #modal-overlay .overlay-box { width: 380px; }
+  #modal-overlay h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+  #modal-overlay p { font-size: 12px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+  #modal-overlay textarea { width: 100%; height: 120px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: 11px; font-family: monospace; padding: 8px; border-radius: 6px; resize: none; outline: none; margin-bottom: 12px; }
+  #modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="logo">⚡ Multi-Frames</span>
+  <input type="text" id="url-input" placeholder="Enter URL for new tab…" />
+  <button class="bar-btn" onclick="addTab()">+ New Tab</button>
+  <button class="bar-btn ok" onclick="saveAllCookies()" title="Save all cookies to file now">💾 Save All</button>
+  <button class="bar-btn" onclick="toggleFullscreen()" id="fs-topbtn" title="Toggle fullscreen">⛶ Fullscreen</button>
+  <span id="autosave-indicator">✓ autosaved</span>
+  <button class="bar-btn accent" onclick="openSettingsTab()">⚙️ Settings</button>
+</div>
+
+<div id="tabbar">
+  <div id="add-tab" onclick="promptNewTab()" title="New tab">+</div>
+</div>
+
+<div id="frames">
+  <!-- inline startup panel (covers everything) -->
+  <div id="startup-inline-panel">
+    <div class="panel-card">
+      <h3><span style="font-size:26px;">💾</span> Connect a save file</h3>
+      <p>TabForge reads & writes cookies to a local JSON file (File System Access API).<br>
+      Pick an existing file, create a new one, or skip to continue without saving.</p>
+      <div class="inline-btn-row">
+        <button class="inline-big-btn primary" onclick="startupPickFile()">
+          <span class="btn-icon">📂</span>
+          <span class="btn-label">Choose file</span>
+          <span class="btn-sub">Open or create .json</span>
+        </button>
+        <button class="inline-big-btn" onclick="startupSkip()">
+          <span class="btn-icon">✕</span>
+          <span class="btn-label">Skip</span>
+          <span class="btn-sub">Continue without file</span>
+        </button>
+      </div>
+      <div style="margin-top: 18px; font-size: 11px; color: var(--muted); text-align: center; border-top: 1px solid var(--border); padding-top: 16px;">
+        ⚡ You can always link a file later in Settings.
+      </div>
+    </div>
+  </div>
+
+  <div id="settings-panel"></div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Only paste-fallback modal remains -->
+<div class="overlay" id="modal-overlay">
+  <div class="overlay-box">
+    <h3>Paste cookie JSON</h3>
+    <p>Paste the contents of a previously saved <code>cookies.json</code> file.</p>
+    <textarea id="modal-input" placeholder='[{"name":"session","value":"abc","domain":"example.com","path":"/"}]'></textarea>
+    <div id="modal-actions">
+      <button class="sm-btn" onclick="closeModal()">Cancel</button>
+      <button class="sm-btn ok" onclick="applyLoadedCookies()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+var tabs = [];
+var activeId = null;
+var tabCounter = 0;
+var settingsTabId = null;
+var autosaveTimer = null;
+var AUTOSAVE_MS = 30000;
+var isFullscreen = false;
+
+var settings = {
+  autosave: true,
+  openInBlankOnStart: true,
+  cookieFileHandle: null
+};
+
+// ── BOOT ───────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  loadSettings();
+  buildSettingsPanel();
+
+  if (settings.openInBlankOnStart && !isAboutBlank()) {
+    openSelfInBlank(true);
+    return;
+  }
+
+  // Show inline startup panel if API available
+  if ('showOpenFilePicker' in window) {
+    document.getElementById('startup-inline-panel').style.display = 'flex';
+  } else {
+    finishBoot();
+  }
+});
+
+function finishBoot() {
+  var panel = document.getElementById('startup-inline-panel');
+  if (panel) panel.style.display = 'none';
+  
+  addTab(null);
+  startAutosave();
+}
+
+function isAboutBlank() {
+  try { return window.location.href === 'about:blank' || window.location.protocol === 'about:'; } catch(e) { return false; }
+}
+
+// Startup handlers (inline panel)
+async function startupPickFile() {
+  document.getElementById('startup-inline-panel').style.display = 'none';
+  try {
+    // First try to open an existing file (user chooses)
+    if ('showOpenFilePicker' in window) {
+      var hs = await window.showOpenFilePicker({ 
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }], 
+        multiple: false 
+      });
+      settings.cookieFileHandle = hs[0];
+      var file = await hs[0].getFile();
+      var text = await file.text();
+      if (text.trim().startsWith('[')) applyCookieData(text);
+      updateFileDisplay();
+      toast('Loaded: ' + hs[0].name);
+    } 
+    // Fallback to save picker for creating a new file if open picker unavailable
+    else if ('showSaveFilePicker' in window) {
+      var h = await window.showSaveFilePicker({
+        suggestedName: 'cookies.json',
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+      });
+      settings.cookieFileHandle = h;
+      try {
+        var perm = await h.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') await h.requestPermission({ mode: 'readwrite' });
+        var file2 = await h.getFile();
+        var text2 = await file2.text();
+        if (text2.trim().startsWith('[')) applyCookieData(text2);
+      } catch(e) { /* fresh file - no existing data to load */ }
+      updateFileDisplay();
+      toast('Save file linked: ' + h.name);
+    } else {
+      toast('File System Access API not supported');
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') toast('Could not pick file: ' + e.message);
+  }
+  finishBoot();
+}
+
+function startupSkip() {
+  document.getElementById('startup-inline-panel').style.display = 'none';
+  finishBoot();
+}
+
+// ── FULLSCREEN ─────────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(function(e) { toast('Fullscreen not available: ' + e.message); });
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener('fullscreenchange', function() {
+  isFullscreen = !!document.fullscreenElement;
+  document.getElementById('fs-topbtn').textContent = isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen';
+});
+
+// ── SETTINGS PERSISTENCE ───────────────────────────────────────────────────
+function loadSettings() {
+  try {
+    var s = JSON.parse(localStorage.getItem('tabforge_settings') || '{}');
+    if (typeof s.autosave === 'boolean') settings.autosave = s.autosave;
+    if (typeof s.openInBlankOnStart === 'boolean') settings.openInBlankOnStart = s.openInBlankOnStart;
+  } catch(e) {}
+}
+function saveSettings() {
+  try { localStorage.setItem('tabforge_settings', JSON.stringify({ autosave: settings.autosave, openInBlankOnStart: settings.openInBlankOnStart })); } catch(e) {}
+}
+
+// ── AUTOSAVE ───────────────────────────────────────────────────────────────
+function startAutosave() {
+  stopAutosave();
+  if (!settings.autosave) return;
+  autosaveTimer = setInterval(doAutosave, AUTOSAVE_MS);
+}
+function stopAutosave() { if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; } }
+
+async function doAutosave() {
+  if (!settings.autosave) return;
+  var data = collectCookies();
+  var json = JSON.stringify(data, null, 2);
+  if (settings.cookieFileHandle) {
+    try {
+      var perm = await settings.cookieFileHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') perm = await settings.cookieFileHandle.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        var w = await settings.cookieFileHandle.createWritable();
+        await w.write(json); await w.close();
+        flashAutosave(); return;
+      }
+    } catch(e) {}
+  }
+  try { localStorage.setItem('tabforge_cookies', json); } catch(e) {}
+  flashAutosave();
+}
+
+async function saveAllCookies() {
+  var data = collectCookies();
+  var json = JSON.stringify(data, null, 2);
+  if (settings.cookieFileHandle) {
+    try {
+      var perm = await settings.cookieFileHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') perm = await settings.cookieFileHandle.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        var w = await settings.cookieFileHandle.createWritable();
+        await w.write(json); await w.close();
+        toast('All cookies saved to ' + settings.cookieFileHandle.name);
+        flashAutosave(); return;
+      }
+    } catch(e) {}
+  }
+  try {
+    if ('showSaveFilePicker' in window) {
+      var h = await window.showSaveFilePicker({ suggestedName: 'cookies.json', types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
+      var w2 = await h.createWritable(); await w2.write(json); await w2.close();
+      settings.cookieFileHandle = h; updateFileDisplay();
+      toast('Saved — file now linked for autosave');
+    } else {
+      var blob = new Blob([json], { type: 'application/json' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cookies.json'; a.click();
+      toast('Cookies downloaded');
+    }
+  } catch(e) { if (e.name !== 'AbortError') toast('Save failed: ' + e.message); }
+}
+
+function flashAutosave() {
+  var el = document.getElementById('autosave-indicator');
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  setTimeout(function() { el.classList.remove('flash'); }, 2200);
+}
+
+// ── TOAST ──────────────────────────────────────────────────────────────────
+function toast(msg, ms) {
+  ms = ms || 2600;
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(function() { el.classList.remove('show'); }, ms);
+}
+
+// ── TABS ───────────────────────────────────────────────────────────────────
+function genId() { return 't' + (++tabCounter); }
+
+function addTab(url) {
+  var id = genId();
+  var raw = url || document.getElementById('url-input').value.trim() || null;
+  var src = raw ? (raw.startsWith('http') ? raw : 'https://' + raw) : null;
+  var label = src ? (function(){ try { return new URL(src).hostname; } catch(e){ return src; } })() : 'New Tab';
+  var tab = { id: id, src: src, label: label, running: !!src };
+  tabs.push(tab);
+  renderTabChip(tab);
+  renderFrameWrap(tab);
+  setActive(id);
+  document.getElementById('url-input').value = '';
+}
+
+function promptNewTab() {
+  var url = prompt('Enter URL (leave blank for empty tab):');
+  if (url !== null) addTab(url || null);
+}
+
+function renderTabChip(tab) {
+  var el = document.createElement('div');
+  el.className = 'tab ' + (tab.running ? 'running' : 'stopped');
+  el.dataset.id = tab.id;
+  el.innerHTML = '<span class="tab-dot"></span>'
+    + '<span class="tab-label" title="' + esc(tab.label) + '">' + esc(tab.label) + '</span>'
+    + '<span class="tab-close" data-close="' + tab.id + '">&times;</span>';
+  el.addEventListener('click', function(e) {
+    if (e.target.dataset.close) { closeTab(e.target.dataset.close); return; }
+    setActive(tab.id);
+  });
+  document.getElementById('tabbar').insertBefore(el, document.getElementById('add-tab'));
+}
+
+function renderFrameWrap(tab) {
+  var wrap = document.createElement('div');
+  wrap.className = 'frame-wrap';
+  wrap.dataset.id = tab.id;
+
+  var tb = document.createElement('div');
+  tb.className = 'frame-toolbar';
+
+  var inp = document.createElement('input');
+  inp.type = 'text'; inp.value = tab.src || ''; inp.placeholder = 'Enter URL and press Enter…';
+  inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') navigateFrame(tab.id, inp.value); });
+
+  var goBtn   = mkBtn('icon-btn', '➤', 'Go', function() { navigateFrame(tab.id, inp.value); });
+  var ssBtn   = mkBtn('icon-btn ' + (tab.running ? 'stop-btn' : 'active-btn'), tab.running ? '⏹' : '▶', tab.running ? 'Stop' : 'Start', function() { toggleFrame(tab.id); });
+  ssBtn.dataset.role = 'stopstart';
+  var rlBtn   = mkBtn('icon-btn', '↺', 'Reload', function() { reloadFrame(tab.id); });
+  var fsBtn   = mkBtn('icon-btn fs-btn', '⛶', 'Fullscreen', function() { toggleFullscreen(); });
+
+  tb.appendChild(inp); tb.appendChild(goBtn); tb.appendChild(ssBtn); tb.appendChild(rlBtn); tb.appendChild(fsBtn);
+
+  var content = document.createElement('div');
+  content.dataset.role = 'content';
+  content.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;';
+
+  if (tab.src && tab.running) {
+    var fr = document.createElement('iframe'); fr.src = tab.src; fr.allow = 'fullscreen';
+    content.appendChild(fr);
+  } else {
+    content.appendChild(makePH(tab.src ? 'Stopped — press ▶ to start' : 'Enter a URL above and press Enter'));
+  }
+
+  wrap.appendChild(tb); wrap.appendChild(content);
+  document.getElementById('frames').insertBefore(wrap, document.getElementById('settings-panel'));
+}
+
+function mkBtn(cls, text, title, fn) {
+  var b = document.createElement('button');
+  b.className = cls; b.textContent = text; b.title = title;
+  b.addEventListener('click', fn); return b;
+}
+function makePH(msg) {
+  var d = document.createElement('div'); d.className = 'placeholder';
+  d.innerHTML = '<div class="big">◼</div><div>' + esc(msg) + '</div>'; return d;
+}
+
+function setActive(id) {
+  activeId = id;
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.id === id); });
+  document.querySelectorAll('.frame-wrap').forEach(function(f) { f.classList.toggle('active', f.dataset.id === id); });
+  document.getElementById('settings-panel').classList.toggle('active', id === settingsTabId);
+}
+
+function navigateFrame(id, rawUrl) {
+  if (!rawUrl) return;
+  var url = rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl;
+  var tab = tabs.find(function(t) { return t.id === id; }); if (!tab) return;
+  tab.src = url; tab.running = true;
+  try { tab.label = new URL(url).hostname; } catch(e) { tab.label = url; }
+  var tabEl = document.querySelector('.tab[data-id="' + id + '"]');
+  if (tabEl) { tabEl.querySelector('.tab-label').textContent = tab.label; tabEl.className = 'tab running' + (activeId === id ? ' active' : ''); }
+  var wrap = document.querySelector('.frame-wrap[data-id="' + id + '"]');
+  if (wrap) {
+    wrap.querySelector('input').value = url; updateSS(wrap, true);
+    var c = wrap.querySelector('[data-role="content"]'); c.innerHTML = '';
+    var fr = document.createElement('iframe'); fr.src = url; fr.allow = 'fullscreen'; c.appendChild(fr);
+  }
+}
+
+function toggleFrame(id) {
+  var tab = tabs.find(function(t) { return t.id === id; }); if (!tab) return;
+  var wrap = document.querySelector('.frame-wrap[data-id="' + id + '"]');
+  var c = wrap.querySelector('[data-role="content"]');
+  if (tab.running) {
+    tab.running = false; c.innerHTML = ''; c.appendChild(makePH('Stopped — press ▶ to start'));
+    document.querySelector('.tab[data-id="' + id + '"]').className = 'tab stopped' + (activeId === id ? ' active' : '');
+    updateSS(wrap, false); toast('Tab stopped');
+  } else {
+    if (!tab.src) { toast('Set a URL first'); return; }
+    tab.running = true; c.innerHTML = '';
+    var fr = document.createElement('iframe'); fr.src = tab.src; fr.allow = 'fullscreen'; c.appendChild(fr);
+    document.querySelector('.tab[data-id="' + id + '"]').className = 'tab running' + (activeId === id ? ' active' : '');
+    updateSS(wrap, true); toast('Tab started');
+  }
+}
+
+function updateSS(wrap, running) {
+  var b = wrap.querySelector('[data-role="stopstart"]');
+  b.textContent = running ? '⏹' : '▶'; b.title = running ? 'Stop' : 'Start';
+  b.className = 'icon-btn ' + (running ? 'stop-btn' : 'active-btn');
+}
+
+function reloadFrame(id) {
+  var tab = tabs.find(function(t) { return t.id === id; }); if (!tab || !tab.running || !tab.src) return;
+  var wrap = document.querySelector('.frame-wrap[data-id="' + id + '"]');
+  var c = wrap.querySelector('[data-role="content"]'); c.innerHTML = '';
+  var fr = document.createElement('iframe'); fr.src = tab.src; fr.allow = 'fullscreen'; c.appendChild(fr);
+  toast('Reloaded');
+}
+
+function closeTab(id) {
+  if (id === settingsTabId) settingsTabId = null;
+  tabs = tabs.filter(function(t) { return t.id !== id; });
+  var te = document.querySelector('.tab[data-id="' + id + '"]'); if (te) te.remove();
+  var fe = document.querySelector('.frame-wrap[data-id="' + id + '"]'); if (fe) fe.remove();
+  if (activeId === id) {
+    if (tabs.length) setActive(tabs[tabs.length - 1].id);
+    else { activeId = null; document.getElementById('settings-panel').classList.remove('active'); }
+  }
+}
+
+// ── SETTINGS TAB ───────────────────────────────────────────────────────────
+function openSettingsTab() {
+  if (settingsTabId) { setActive(settingsTabId); return; }
+  var id = genId(); settingsTabId = id;
+  tabs.push({ id: id, src: null, label: 'Settings', running: false });
+  var el = document.createElement('div');
+  el.className = 'tab settings-tab stopped'; el.dataset.id = id;
+  el.innerHTML = '<span class="tab-dot sdot"></span>'
+    + '<span class="tab-label">⚙️ Settings</span>'
+    + '<span class="tab-close" data-close="' + id + '">&times;</span>';
+  el.addEventListener('click', function(e) {
+    if (e.target.dataset.close) { closeTab(e.target.dataset.close); return; }
+    setActive(id);
+  });
+  document.getElementById('tabbar').insertBefore(el, document.getElementById('add-tab'));
+  setActive(id);
+}
+
+function buildSettingsPanel() {
+  var p = document.getElementById('settings-panel');
+  p.innerHTML = [
+    '<h2>Settings</h2>',
+    '<p class="subtitle">Preferences save automatically to <code>localStorage</code>. The cookie file link resets on page reload (browser security).</p>',
+
+    '<div class="s-section">',
+      '<h3>Cookies</h3>',
+      '<div class="s-row" style="flex-direction:column;">',
+        '<div class="s-info">',
+          '<label>Cookie file</label>',
+          '<small>Link a <code>.json</code> file on your disk. TabForge reads and writes using Chrome\'s <em>"Let site modify file"</em> permission (File System Access API).</small>',
+        '</div>',
+        '<div class="file-row">',
+          '<div class="file-display" id="cookie-file-display">No file selected</div>',
+          '<button class="sm-btn" onclick="pickCookieFile()">Choose file…</button>',
+          '<button class="sm-btn del" onclick="clearCookieFile()">Clear</button>',
+        '</div>',
+      '</div>',
+      '<div class="s-row">',
+        '<div class="s-info">',
+          '<label for="tog-autosave">Autosave cookies</label>',
+          '<small>Writes cookies to the linked file every 30 s. Falls back to <code>localStorage</code> if no file is linked.</small>',
+        '</div>',
+        '<label class="toggle"><input type="checkbox" id="tog-autosave"><span class="toggle-track"></span></label>',
+      '</div>',
+      '<div class="s-row" style="flex-direction:column;">',
+        '<div class="s-info"><label>Manual save & load</label><small>Save or load cookies on demand.</small></div>',
+        '<div class="s-actions">',
+          '<button class="sm-btn ok" onclick="saveCookies()">⇓ Save to file</button>',
+          '<button class="sm-btn" onclick="loadCookiesUI()">⇑ Load from file</button>',
+        '</div>',
+      '</div>',
+    '</div>',
+
+    '<div class="s-section">',
+      '<h3>Startup</h3>',
+      '<div class="s-row">',
+        '<div class="s-info">',
+          '<label for="tog-blank">Open in <code>about:blank</code> on startup</label>',
+          '<small>Relaunches TabForge in a clean blank tab on load and closes the original file tab. Keeps the URL bar tidy.</small>',
+        '</div>',
+        '<label class="toggle"><input type="checkbox" id="tog-blank"><span class="toggle-track"></span></label>',
+      '</div>',
+      '<div class="s-row" style="flex-direction:column;">',
+        '<div class="s-info"><label>Open in <code>about:blank</code> now</label><small>Manually relaunch in a fresh blank tab.</small></div>',
+        '<div class="s-actions">',
+          '<button class="sm-btn hi" onclick="openSelfInBlank(false)">↗ Open in blank tab now</button>',
+        '</div>',
+      '</div>',
+    '</div>',
+  ].join('');
+
+  var togAuto = document.getElementById('tog-autosave');
+  togAuto.checked = settings.autosave;
+  togAuto.addEventListener('change', function() {
+    settings.autosave = this.checked; saveSettings();
+    if (settings.autosave) startAutosave(); else stopAutosave();
+    toast(settings.autosave ? 'Autosave enabled' : 'Autosave disabled');
+  });
+
+  var togBlank = document.getElementById('tog-blank');
+  togBlank.checked = settings.openInBlankOnStart;
+  togBlank.addEventListener('change', function() {
+    settings.openInBlankOnStart = this.checked; saveSettings();
+    toast(settings.openInBlankOnStart ? 'Will open in blank tab on next start' : 'Disabled blank-tab startup');
+  });
+
+  updateFileDisplay();
+}
+
+function updateFileDisplay() {
+  var el = document.getElementById('cookie-file-display'); if (!el) return;
+  if (settings.cookieFileHandle) { el.textContent = settings.cookieFileHandle.name; el.classList.add('linked'); }
+  else { el.textContent = 'No file selected'; el.classList.remove('linked'); }
+}
+
+async function pickCookieFile() {
+  if (!('showOpenFilePicker' in window)) { toast('File System Access API not supported'); return; }
+  try {
+    var hs = await window.showOpenFilePicker({ types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }], multiple: false });
+    settings.cookieFileHandle = hs[0]; updateFileDisplay();
+    toast('Linked: ' + settings.cookieFileHandle.name);
+    if (settings.autosave) startAutosave();
+  } catch(e) { if (e.name !== 'AbortError') toast('Error: ' + e.message); }
+}
+
+function clearCookieFile() { settings.cookieFileHandle = null; updateFileDisplay(); toast('File link cleared'); }
+
+// ── OPEN IN BLANK ──────────────────────────────────────────────────────────
+function openSelfInBlank(silent) {
+  try {
+    var html = document.documentElement.outerHTML;
+    var w = window.open('about:blank', '_blank');
+    if (!w) {
+      if (!silent) toast('Pop-up blocked — allow pop-ups and retry');
+      else { addTab(null); startAutosave(); }
+      return;
+    }
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(function() { try { window.close(); } catch(e) {} }, 400);
+  } catch(e) {
+    toast('Could not open blank tab: ' + e.message);
+    addTab(null);
+  }
+}
+
+// ── COOKIES ────────────────────────────────────────────────────────────────
+function collectCookies() {
+  var raw = document.cookie;
+  var fromDoc = raw ? raw.split(';').map(function(c) {
+    var p = c.trim().split('='); var n = p.shift();
+    return { name: n.trim(), value: p.join('='), domain: location.hostname, path: '/' };
+  }) : [];
+  var stored = []; try { stored = JSON.parse(localStorage.getItem('tabforge_cookies') || '[]'); } catch(e) {}
+  var all = stored.concat(fromDoc), seen = {};
+  return all.filter(function(c) { var k = c.name + '@' + c.domain; if (seen[k]) return false; seen[k] = true; return true; });
+}
+
+async function saveCookies() {
+  var data = collectCookies();
+  if (!data.length) { toast('No cookies found to save'); return; }
+  var json = JSON.stringify(data, null, 2);
+  if (settings.cookieFileHandle) {
+    try {
+      var perm = await settings.cookieFileHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') perm = await settings.cookieFileHandle.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        var w = await settings.cookieFileHandle.createWritable(); await w.write(json); await w.close();
+        toast('Saved to ' + settings.cookieFileHandle.name); return;
+      }
+    } catch(e) {}
+  }
+  try {
+    if ('showSaveFilePicker' in window) {
+      var h = await window.showSaveFilePicker({ suggestedName: 'cookies.json', types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
+      var w2 = await h.createWritable(); await w2.write(json); await w2.close();
+      settings.cookieFileHandle = h; updateFileDisplay();
+      toast('Saved — file now linked for autosave');
+    } else {
+      var blob = new Blob([json], { type: 'application/json' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cookies.json'; a.click();
+      toast('Cookies downloaded');
+    }
+  } catch(e) { if (e.name !== 'AbortError') toast('Save failed: ' + e.message); }
+}
+
+async function loadCookiesUI() {
+  try {
+    if ('showOpenFilePicker' in window) {
+      var hs = await window.showOpenFilePicker({ types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
+      var file = await hs[0].getFile();
+      applyCookieData(await file.text());
+      if (!settings.cookieFileHandle) { settings.cookieFileHandle = hs[0]; updateFileDisplay(); }
+    } else { openModal(); }
+  } catch(e) { if (e.name !== 'AbortError') openModal(); }
+}
+
+function applyCookieData(text) {
+  try {
+    var data = JSON.parse(text);
+    if (!Array.isArray(data)) throw new Error('Expected a JSON array');
+    localStorage.setItem('tabforge_cookies', JSON.stringify(data));
+    data.forEach(function(c) {
+      if (c.name && c.value !== undefined) {
+        var s = c.name + '=' + c.value + '; path=' + (c.path || '/');
+        if (c.expires) s += '; expires=' + c.expires;
+        document.cookie = s;
+      }
+    });
+    toast('Loaded ' + data.length + ' cookie(s)'); closeModal();
+  } catch(e) { toast('Invalid JSON: ' + e.message); }
+}
+
+// ── PASTE MODAL ────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modal-overlay').classList.add('show');
+  document.getElementById('modal-input').value = '';
+  setTimeout(function() { document.getElementById('modal-input').focus(); }, 50);
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); }
+function applyLoadedCookies() { applyCookieData(document.getElementById('modal-input').value); }
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// ── UTIL ───────────────────────────────────────────────────────────────────
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>
+
+
