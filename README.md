@@ -1,4 +1,4 @@
-# Mutli-Tabs
+# Multi-Tabs
 A website for bypassing url blockers. Should be used responsibly.
 
 ## How to Use
