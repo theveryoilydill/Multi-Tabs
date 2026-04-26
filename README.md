@@ -2,7 +2,8 @@
 A website for bypassing url blockers. Should be used responsibly. 
 
 ## How to Use
-Different ways to use it. ** If you want to use it in an about:blank tab, make sure to enable popups from the site you are using (ex: csb.app) **
+Different ways to use it. 
+**If you want to use it in an about:blank tab, make sure to enable popups from the site you are using (ex: csb.app)**
 
 ### Automatic methods
 * [Codesandbox](https://githubbox.com/theveryoilydill/Multi-Frames/)
